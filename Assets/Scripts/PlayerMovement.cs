@@ -10,7 +10,6 @@ using UnityEngine.Android;
 /// </summary>
 
 /// TODO:
-/// Corner correcting
 /// Stop sliding on slopes
 public enum PlayerState
 {
@@ -55,6 +54,9 @@ public class PlayerMovement : MonoBehaviour
     [Space(25)]
     public bool bufferJumpInput = true;
     [Range(0, 10)] public int inputBufferAmount = 2;
+    [Space(25)]
+    public bool useCorenerCorrection = true;
+    [Range(0.1f, 0.2f)] public float cornerCorrectionLeniancy = 0.15f;
 
     // Essentials
     Vector2 directionalInput = Vector2.zero;
@@ -88,6 +90,7 @@ public class PlayerMovement : MonoBehaviour
         HorizontalMovementManager();
         JumpManager();
         GravityAdjustment();
+        CornerCorrecting();
         DetermineState();
     }
 
@@ -262,6 +265,57 @@ public class PlayerMovement : MonoBehaviour
             rb.gravityScale = fallGravity;
         else
             rb.gravityScale = jumpGravity;
+    }
+
+    /// <summary>
+    /// Colliding at very low speeds will look jerky with this solution
+    /// Potential fixes: move graphics seperetly, calculate speed needed to move, or any other solution that doesn't teleport the player
+    /// </summary>
+    private void CornerCorrecting()
+    {
+        if (!useCorenerCorrection) 
+            return;
+
+        if (grounded) 
+            return;
+
+        RaycastHit2D airCollisionLower;
+        RaycastHit2D airCollisionUpper;
+
+        Vector3 startPointLower = transform.position;
+        Vector3 startPointUpper = transform.position;
+
+        startPointLower.y -= col.bounds.size.y / 2;
+        startPointUpper.y -= (col.bounds.size.y / 2) - cornerCorrectionLeniancy;
+
+        Vector2 directionToCheck = Vector2.zero;
+
+        if (directionalInput.x < 0)
+            directionToCheck = Vector2.left;
+        else if (directionalInput.x > 0)
+            directionToCheck = Vector2.right;
+        else if (rb.velocity.x < 0)
+            directionToCheck = Vector2.left;
+        else if (rb.velocity.x > 0)
+            directionToCheck = Vector2.right;
+        else
+            return;
+
+        airCollisionLower = Physics2D.Raycast(startPointLower, directionToCheck, col.bounds.size.x);
+        airCollisionUpper = Physics2D.Raycast(startPointUpper, directionToCheck, col.bounds.size.x);
+
+        if(airCollisionLower && !airCollisionUpper)
+        {
+            rb.velocity = Vector2.zero;
+            Vector3 targetPosition = rb.transform.position;
+            targetPosition.x += /*col.bounds.size.x */ directionToCheck.x * airCollisionLower.distance;
+            targetPosition.y += startPointUpper.y - startPointLower.y;
+            rb.transform.position = targetPosition;
+        }
+        else if (airCollisionLower)
+        {
+            rb.velocity = new Vector2(0, rb.velocity.y);
+        }
     }
 
     private void FrictionManager()
